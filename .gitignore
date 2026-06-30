@@ -1,0 +1,35 @@
+# Qt build artifacts
+debug/
+release/
+build/
+build-*/
+*.o
+*.obj
+Makefile
+Makefile.*
+*.qmake.stash
+*.pro.user
+*.pro.user.*
+
+# Qt-generated files
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+*.qm
+
+# Executables
+*.exe
+*.ilk
+*.pdb
+*.lib
+
+# Visual Studio / Qt Creator clutter
+*.vcxproj*
+.qtc_clangd/
+*.autosave
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
