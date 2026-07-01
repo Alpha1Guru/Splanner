@@ -3,20 +3,31 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QHeaderView>
+#include <QMouseEvent>
 #include <QCloseEvent>
+#include <algorithm>
+
+// Logical column indices — never change these numbers, they are
+// the true column positions regardless of how the user reorders them visually.
+static const int COL_CHECK    = 0;
+static const int COL_TASK     = 1;
+static const int COL_SUBJECT  = 2;
+static const int COL_DEADLINE = 3;
+static const int COL_PRIORITY = 4;
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     manager.loadFromFile("tasks.txt");
-
     setWindowTitle("Study Planner");
 
-    // --- build widgets ---
-    taskListWidget = new QListWidget(this);
+    // --- table ---
+    setupTable();
 
+    // --- input form ---
     titleInput = new QLineEdit(this);
     titleInput->setPlaceholderText("Task title");
 
-    subjectInput = new QLineEdit(this);          // NEW
+    subjectInput = new QLineEdit(this);
     subjectInput->setPlaceholderText("Course / Subject");
 
     dateInput = new QDateEdit(this);
@@ -30,74 +41,138 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     priorityInput->addItem("High");
     priorityInput->setCurrentIndex(1);
 
-    addButton          = new QPushButton("Add Task", this);
-    removeButton       = new QPushButton("Remove Selected", this);
+    addButton = new QPushButton("Add Task", this);
+
+    // --- action buttons ---
     completeButton     = new QPushButton("Mark Complete", this);
+    unmarkButton       = new QPushButton("Unmark", this);
+    removeButton       = new QPushButton("Remove Selected", this);
     sortPriorityButton = new QPushButton("Sort by Priority", this);
-    sortDateButton     = new QPushButton("Sort by Due Date", this);
-    sortSubjectButton  = new QPushButton("Sort by Subject", this); // NEW
+    sortDateButton     = new QPushButton("Sort by Deadline", this);
+    sortSubjectButton  = new QPushButton("Sort by Subject", this);
 
     // --- layout ---
     QWidget *central = new QWidget(this);
-    QVBoxLayout *mainLayout = new QVBoxLayout(central);
+    QVBoxLayout *main = new QVBoxLayout(central);
 
-    // Row 1: title + subject + date + priority + add button
-    QHBoxLayout *formLayout = new QHBoxLayout();
-    formLayout->addWidget(titleInput);
-    formLayout->addWidget(subjectInput);   // NEW
-    formLayout->addWidget(dateInput);
-    formLayout->addWidget(priorityInput);
-    formLayout->addWidget(addButton);
+    QHBoxLayout *form = new QHBoxLayout();
+    form->addWidget(titleInput,   3);   // stretch factors so title gets most space
+    form->addWidget(subjectInput, 2);
+    form->addWidget(dateInput,    1);
+    form->addWidget(priorityInput,1);
+    form->addWidget(addButton,    1);
 
-    // Row 2: action buttons
-    QHBoxLayout *actionLayout = new QHBoxLayout();
-    actionLayout->addWidget(completeButton);
-    actionLayout->addWidget(removeButton);
-    actionLayout->addWidget(sortPriorityButton);
-    actionLayout->addWidget(sortDateButton);
-    actionLayout->addWidget(sortSubjectButton); // NEW
+    QHBoxLayout *actions1 = new QHBoxLayout();
+    actions1->addWidget(completeButton);
+    actions1->addWidget(unmarkButton);
+    actions1->addWidget(removeButton);
 
-    mainLayout->addWidget(new QLabel("Your Tasks:"));
-    mainLayout->addWidget(taskListWidget);
-    mainLayout->addLayout(formLayout);
-    mainLayout->addLayout(actionLayout);
+    QHBoxLayout *actions2 = new QHBoxLayout();
+    actions2->addWidget(sortPriorityButton);
+    actions2->addWidget(sortDateButton);
+    actions2->addWidget(sortSubjectButton);
+
+    main->addWidget(taskTable);
+    main->addLayout(form);
+    main->addLayout(actions1);
+    main->addLayout(actions2);
 
     setCentralWidget(central);
-    resize(750, 400);  // slightly wider to fit the extra field
+    resize(820, 480);
 
-    // --- wire up buttons ---
+    // --- connect signals ---
     connect(addButton,          &QPushButton::clicked, this, &MainWindow::onAddClicked);
-    connect(removeButton,       &QPushButton::clicked, this, &MainWindow::onRemoveClicked);
     connect(completeButton,     &QPushButton::clicked, this, &MainWindow::onCompleteClicked);
+    connect(unmarkButton,       &QPushButton::clicked, this, &MainWindow::onUnmarkClicked);
+    connect(removeButton,       &QPushButton::clicked, this, &MainWindow::onRemoveClicked);
     connect(sortPriorityButton, &QPushButton::clicked, this, &MainWindow::onSortPriorityClicked);
     connect(sortDateButton,     &QPushButton::clicked, this, &MainWindow::onSortDateClicked);
-    connect(sortSubjectButton,  &QPushButton::clicked, this, &MainWindow::onSortSubjectClicked); // NEW
+    connect(sortSubjectButton,  &QPushButton::clicked, this, &MainWindow::onSortSubjectClicked);
+    connect(taskTable, &QTableWidget::itemChanged, this, &MainWindow::onItemChanged);
 
-    refreshList();
+    refreshTable();
 }
 
 MainWindow::~MainWindow() {}
 
-void MainWindow::refreshList() {
-    taskListWidget->clear();
+void MainWindow::setupTable() {
+    taskTable = new QTableWidget(this);
+    taskTable->setColumnCount(5);
+    taskTable->setHorizontalHeaderLabels({"", "Task", "Subject", "Deadline", "Priority"});
+
+    QHeaderView *header = taskTable->horizontalHeader();
+    header->setSectionsMovable(true);      // columns can be dragged into any order
+    header->setSectionResizeMode(QHeaderView::Interactive);  // columns are resizable
+    header->setStretchLastSection(true);   // last column fills remaining space
+
+    // Checkbox column stays narrow and fixed
+    taskTable->setColumnWidth(COL_CHECK, 28);
+    header->setSectionResizeMode(COL_CHECK, QHeaderView::Fixed);
+
+    // Sensible default widths for the other columns
+    taskTable->setColumnWidth(COL_TASK,     220);
+    taskTable->setColumnWidth(COL_SUBJECT,  150);
+    taskTable->setColumnWidth(COL_DEADLINE, 100);
+    taskTable->setColumnWidth(COL_PRIORITY,  80);
+
+    taskTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    taskTable->setSelectionMode(QAbstractItemView::ExtendedSelection); // Ctrl/Shift multi-select
+    taskTable->setEditTriggers(QAbstractItemView::NoEditTriggers);     // no inline editing
+    taskTable->verticalHeader()->setVisible(false);                     // hide row numbers
+    taskTable->setShowGrid(true);
+    taskTable->setAlternatingRowColors(true);  // zebra striping for readability
+
+    // Install event filter on viewport so we can detect clicks on empty space
+    taskTable->viewport()->installEventFilter(this);
+}
+
+void MainWindow::refreshTable() {
+    // Block signals so adding items doesn't trigger onItemChanged in a loop
+    taskTable->blockSignals(true);
+    taskTable->setRowCount(0);
+
     const auto& tasks = manager.getTasks();
-    for (const auto& t : tasks) {
-        // Format: [X] Data Structures | Read Chapter 4 | due 2026-07-03 | High
-        QString line = QString("[%1] %2  |  %3  |  due %4  |  %5")
-            .arg(t.completed ? "X" : " ")
-            .arg(QString::fromStdString(t.subject))   // subject shown first
-            .arg(QString::fromStdString(t.title))
-            .arg(QString::fromStdString(t.dueDate))
-            .arg(QString::fromStdString(priorityToString(t.priority)));
-        taskListWidget->addItem(line);
+    taskTable->setRowCount((int)tasks.size());
+
+    for (int i = 0; i < (int)tasks.size(); i++) {
+        const Task& t = tasks[i];
+
+        // Column 0: checkbox
+        QTableWidgetItem *checkItem = new QTableWidgetItem();
+        checkItem->setCheckState(t.completed ? Qt::Checked : Qt::Unchecked);
+        checkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        checkItem->setTextAlignment(Qt::AlignCenter);
+        taskTable->setItem(i, COL_CHECK, checkItem);
+
+        // Columns 1-4: text data (not editable)
+        auto makeItem = [](const QString& text) {
+            QTableWidgetItem *item = new QTableWidgetItem(text);
+            item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            return item;
+        };
+
+        taskTable->setItem(i, COL_TASK,     makeItem(QString::fromStdString(t.title)));
+        taskTable->setItem(i, COL_SUBJECT,  makeItem(QString::fromStdString(t.subject)));
+        taskTable->setItem(i, COL_DEADLINE, makeItem(QString::fromStdString(t.dueDate)));
+        taskTable->setItem(i, COL_PRIORITY, makeItem(QString::fromStdString(priorityToString(t.priority))));
     }
+
+    taskTable->blockSignals(false);
+}
+
+// Called whenever a checkbox is clicked directly in the table
+void MainWindow::onItemChanged(QTableWidgetItem *item) {
+    if (item->column() != COL_CHECK) return;
+    bool checked = (item->checkState() == Qt::Checked);
+    manager.setComplete(item->row(), checked);
+    // No refreshTable() here — the visual state is already correct
 }
 
 void MainWindow::onAddClicked() {
     QString title   = titleInput->text().trimmed();
     QString subject = subjectInput->text().trimmed();
     if (title.isEmpty()) return;
-    if (subject.isEmpty()) subject = "General"; // sensible default
+    if (subject.isEmpty()) subject = "General";
 
     std::string dueDate = dateInput->date().toString("yyyy-MM-dd").toStdString();
     Priority p = static_cast<Priority>(priorityInput->currentIndex());
@@ -105,36 +180,57 @@ void MainWindow::onAddClicked() {
     manager.addTask(title.toStdString(), subject.toStdString(), dueDate, p);
     titleInput->clear();
     subjectInput->clear();
-    refreshList();
+    refreshTable();
+}
+
+// Helper: returns a sorted-descending list of currently selected row indices
+static QList<int> selectedRowsSorted(QTableWidget *table) {
+    QList<int> rows;
+    for (auto *item : table->selectedItems()) {
+        if (!rows.contains(item->row()))
+            rows.append(item->row());
+    }
+    std::sort(rows.begin(), rows.end(), std::greater<int>());
+    return rows;
 }
 
 void MainWindow::onRemoveClicked() {
-    int row = taskListWidget->currentRow();
-    if (row < 0) return;
-    manager.removeTask(row);
-    refreshList();
+    QList<int> rows = selectedRowsSorted(taskTable);
+    if (rows.isEmpty()) return;
+    // Remove bottom-up so upper row indices stay valid during deletion
+    for (int row : rows)
+        manager.removeTask(row);
+    refreshTable();
 }
 
 void MainWindow::onCompleteClicked() {
-    int row = taskListWidget->currentRow();
-    if (row < 0) return;
-    manager.markComplete(row);
-    refreshList();
+    QList<int> rows = selectedRowsSorted(taskTable);
+    if (rows.isEmpty()) return;
+    for (int row : rows)
+        manager.setComplete(row, true);
+    refreshTable();
 }
 
-void MainWindow::onSortPriorityClicked() {
-    manager.sortByPriority();
-    refreshList();
+void MainWindow::onUnmarkClicked() {
+    QList<int> rows = selectedRowsSorted(taskTable);
+    if (rows.isEmpty()) return;
+    for (int row : rows)
+        manager.setComplete(row, false);
+    refreshTable();
 }
 
-void MainWindow::onSortDateClicked() {
-    manager.sortByDueDate();
-    refreshList();
-}
+void MainWindow::onSortPriorityClicked() { manager.sortByPriority(); refreshTable(); }
+void MainWindow::onSortDateClicked()     { manager.sortByDueDate();  refreshTable(); }
+void MainWindow::onSortSubjectClicked()  { manager.sortBySubject();  refreshTable(); }
 
-void MainWindow::onSortSubjectClicked() {   // NEW
-    manager.sortBySubject();
-    refreshList();
+// Clicking on empty space below the last row clears the selection
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == taskTable->viewport() && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent *me = static_cast<QMouseEvent *>(event);
+        if (!taskTable->indexAt(me->pos()).isValid())
+            taskTable->clearSelection();
+    }
+    return QMainWindow::eventFilter(obj, event);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

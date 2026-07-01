@@ -2,7 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QListWidget>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QLineEdit>
 #include <QDateEdit>
 #include <QComboBox>
@@ -13,36 +14,42 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
-
-private slots:
-    void onAddClicked();
-    void onRemoveClicked();
-    void onCompleteClicked();
-    void onSortPriorityClicked();
-    void onSortDateClicked();
-    void onSortSubjectClicked();   // NEW
-
-private:
-    void refreshList();
-
-    TaskManager manager;
-
-    QListWidget *taskListWidget;
-    QLineEdit   *titleInput;
-    QLineEdit   *subjectInput;     // NEW
-    QDateEdit   *dateInput;
-    QComboBox   *priorityInput;
-    QPushButton *addButton;
-    QPushButton *removeButton;
-    QPushButton *completeButton;
-    QPushButton *sortPriorityButton;
-    QPushButton *sortDateButton;
-    QPushButton *sortSubjectButton; // NEW
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;  // for click-to-deselect
+
+private slots:
+    void onAddClicked();
+    void onRemoveClicked();        // removes ALL selected rows
+    void onCompleteClicked();      // marks ALL selected rows complete
+    void onUnmarkClicked();        // unmarks ALL selected rows
+    void onSortPriorityClicked();
+    void onSortDateClicked();
+    void onSortSubjectClicked();
+    void onItemChanged(QTableWidgetItem *item);  // handles checkbox toggling
+
+private:
+    void setupTable();
+    void refreshTable();
+
+    TaskManager manager;
+
+    QTableWidget *taskTable;
+    QLineEdit    *titleInput;
+    QLineEdit    *subjectInput;
+    QDateEdit    *dateInput;
+    QComboBox    *priorityInput;
+
+    QPushButton  *addButton;
+    QPushButton  *completeButton;
+    QPushButton  *unmarkButton;
+    QPushButton  *removeButton;
+    QPushButton  *sortPriorityButton;
+    QPushButton  *sortDateButton;
+    QPushButton  *sortSubjectButton;
 };
 
 #endif
