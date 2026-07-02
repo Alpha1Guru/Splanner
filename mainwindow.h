@@ -19,17 +19,18 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
-    bool eventFilter(QObject *obj, QEvent *event) override;  // for click-to-deselect
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void onAddClicked();
-    void onRemoveClicked();        // removes ALL selected rows
-    void onCompleteClicked();      // marks ALL selected rows complete
-    void onUnmarkClicked();        // unmarks ALL selected rows
+    void onRemoveClicked();
+    void onCompleteClicked();
+    void onUnmarkClicked();
     void onSortPriorityClicked();
-    void onSortDateClicked();
+    void onSortDeadlineClicked();
     void onSortSubjectClicked();
-    void onItemChanged(QTableWidgetItem *item);  // handles checkbox toggling
+    void onSortEntryClicked();          // NEW: restore original order
+    void onItemChanged(QTableWidgetItem *item);
 
 private:
     void setupTable();
@@ -48,8 +49,9 @@ private:
     QPushButton  *unmarkButton;
     QPushButton  *removeButton;
     QPushButton  *sortPriorityButton;
-    QPushButton  *sortDateButton;
+    QPushButton  *sortDeadlineButton;
     QPushButton  *sortSubjectButton;
+    QPushButton  *sortEntryButton;      // NEW
 };
 
 #endif
